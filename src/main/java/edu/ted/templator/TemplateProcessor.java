@@ -4,6 +4,7 @@ import edu.ted.templator.exception.NoValueCanBeObtainedException;
 import edu.ted.templator.utils.ReflectionUtils;
 
 import java.io.*;
+import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.file.Files;
@@ -14,6 +15,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static java.util.stream.Collectors.toList;
+
 
 public class TemplateProcessor {
     private final Pattern fieldPathSplitPattern = Pattern.compile("([^.]+)(\\.(.+))*");
@@ -173,26 +175,21 @@ public class TemplateProcessor {
     }
 
     public void process(String templateFile, Map<String, Object> parametersMap, Writer writer) throws FileNotFoundException {
-        final URL resource = getClass().getClassLoader().getResource(baseDirectory + templateFile);
-        if (resource == null) {
-            throw new FileNotFoundException("Resource File " + templateFile + " not found");
-        }
-        Path path = null;
-        try {
-            path = Paths.get(resource.toURI());
-        } catch (URISyntaxException e) {
-            e.printStackTrace();
-        }
-        try {
-            List<String> resourceLines = Files.lines(path).collect(toList());
-            process(resourceLines, parametersMap, writer);
-
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        try (InputStream resourceAsStream = getClass().getClassLoader().getResourceAsStream(baseDirectory + templateFile);
+             InputStreamReader isReader = new InputStreamReader(resourceAsStream);
+                 BufferedReader reader = new BufferedReader(isReader)) {
+                List<String> resourceLines = reader.lines().collect(toList());
+                process(resourceLines, parametersMap, writer);
+            } catch (NullPointerException e) {
+                e.printStackTrace();
+                throw new FileNotFoundException("Template file " + templateFile + " not found");
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
     }
 
-    public void process(List<String> linesList, Map<String, Object> parametersMap, Writer writer) throws IOException {
+    public void process(List<String> linesList, Map<String, Object> parametersMap, Writer writer) throws
+            IOException {
         List<String> linesWithInclude = processWithInclude(linesList, parametersMap);
         List<String> linesWithLists = processWithLists(linesWithInclude, parametersMap);
         List<String> linesWithElements = linesWithLists

@@ -127,7 +127,7 @@ class TemplateProcessorTest {
         StringWriter writer = new StringWriter();
         Throwable thrown = assertThrows(FileNotFoundException.class, ()->processor.process("test2.html", parametersMap, writer));
 
-        assertEquals("Resource File test2.html not found", thrown.getMessage());
+        assertEquals("Template file test2.html not found", thrown.getMessage());
     }
 
 
