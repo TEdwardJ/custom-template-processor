@@ -2,14 +2,10 @@ package edu.ted.templator;
 
 import edu.ted.templator.utils.ReflectionUtilsTest;
 import org.junit.jupiter.api.Test;
-
 import java.io.FileNotFoundException;
 import java.io.StringWriter;
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -25,7 +21,7 @@ class TemplateProcessorTest {
         parametersMap.put("field1", "value1");
         parametersMap.put("field2", "value2");
         parametersMap.put("field3", "value3");
-        String preparedString = processor.processWithElements(templateString, parametersMap);
+        String preparedString = processor.processLineWithElements(templateString, parametersMap);
 
         assertEquals("Let`s suppose we have 3 fields with the values value1, value2, value3 respectfully", preparedString);
     }
@@ -37,11 +33,10 @@ class TemplateProcessorTest {
         parametersMap.put("field1", "value1");
         parametersMap.put("field2", new BigDecimal(56));
         parametersMap.put("field3", "value3");
-        String preparedString = processor.processWithElements(templateString, parametersMap);
+        String preparedString = processor.processLineWithElements(templateString, parametersMap);
 
         assertEquals("Let`s suppose we have 3 fields with the values value1, 56, value3 respectfully", preparedString);
     }
-
 
     @Test
     public void givenComplexObjectAndComplexFieldPath_whenSubstitutedForValue_thenCorrect(){
@@ -52,7 +47,7 @@ class TemplateProcessorTest {
         objectB.setField1("objectB.field1Value");
         objectA.setField1(objectB);
         parametersMap.put("object", objectA);
-        String preparedString = processor.processWithElements(templateString, parametersMap);
+        String preparedString = processor.processLineWithElements(templateString, parametersMap);
 
         assertEquals("Let`s suppose we have fields with the value objectB.field1Value", preparedString);
     }
@@ -66,7 +61,7 @@ class TemplateProcessorTest {
         objectB.setField1("objectB.$field1Value");
         objectA.setField1(objectB);
         parametersMap.put("object", objectA);
-        String preparedString = processor.processWithElements(templateString, parametersMap);
+        String preparedString = processor.processLineWithElements(templateString, parametersMap);
 
         assertEquals("Let`s suppose we have fields with the value objectB.$field1Value", preparedString);
     }

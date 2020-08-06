@@ -4,12 +4,6 @@ import edu.ted.templator.exception.NoValueCanBeObtainedException;
 import edu.ted.templator.utils.ReflectionUtils;
 
 import java.io.*;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.net.URL;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -18,45 +12,35 @@ import static java.util.stream.Collectors.toList;
 
 
 public class TemplateProcessor {
-    private final Pattern fieldPathSplitPattern = Pattern.compile("([^.]+)(\\.(.+))*");
+    private static final Pattern FIELD_PATH_SPLITTING_PATTERN = Pattern.compile("([^.]+)(\\.(.+))*");
 
-    private final Pattern tokenPattern = Pattern.compile("(\\$\\{([^}?]+)(\\?*[^}]*)\\})");
-    private final String particularTokenPattern = "(\\$\\{(<tokenName>)(\\?*[^}]*)\\})";
+    private static final Pattern TOKEN_PATTERN = Pattern.compile("(\\$\\{([^}?]+)(\\?*[^}]*)\\})");
+    private static final String NAMED_TOKEN_PATTERN = "(\\$\\{(<tokenName>)(\\?*[^}]*)\\})";
 
-    private final Pattern includeStartPattern = Pattern.compile("<#include");
-    private final Pattern includePattern = Pattern.compile("<#include \"(.+)\"[ ]*>");
+    private static final Pattern INCLUDE_INSTRUCTION_PATTERN = Pattern.compile("<#include \"(.+)\"[ ]*>");
 
-    private final Pattern listStartPattern = Pattern.compile("<#list[ ]+([^ ]+) as ([^ ]+)[ ]*>");
-    private final Pattern listPattern = Pattern.compile("<#list[ ]+([^ ]+) as ([^ ]+)[ ]*>(.+)</#list>", Pattern.DOTALL + Pattern.MULTILINE);
+    private final static Pattern LIST_START_PATTERN = Pattern.compile("<#list[ ]+([^ ]+) as ([^ ]+)[ ]*>");
+    private final static Pattern LIST_PATTERN = Pattern.compile("<#list[ ]+([^ ]+) as ([^ ]+)[ ]*>(.+)</#list>", Pattern.DOTALL + Pattern.MULTILINE);
 
     private final String baseDirectory;
 
     public TemplateProcessor(String baseDirectory) {
-        if (baseDirectory.isEmpty()) {
             this.baseDirectory = baseDirectory;
-        } else {
-            this.baseDirectory = baseDirectory;
-        }
-
     }
 
     List<String> processWithInclude(List<String> templateLines, Map<String, Object> parametersMap) {
         for (int i = 0; i < templateLines.size(); i++) {
-            String templateString = templateLines.get(i);
-            String line = templateString;
+            String templateLine = templateLines.get(i);
 
-            Matcher includeStartMatcher = includeStartPattern.matcher(line);
-            Matcher includeMatcher = includePattern.matcher(line);
-            if (includeStartMatcher.find()) {
-                System.out.println(templateString);
-                if (includeMatcher.find()) {
-                    String instruction = includeMatcher.group(0);
+            Matcher includeMatcher = INCLUDE_INSTRUCTION_PATTERN.matcher(templateLine);
 
-                    String includedFile = getIncludedFile(instruction, parametersMap);
-                    templateString = includeMatcher.replaceAll(includedFile);
-                }
-                templateLines.set(i, templateString);
+            if (includeMatcher.find()) {
+                String fileDescriptor = includeMatcher.group(1);
+
+                String includedFile = processIncludedFileAndGet(fileDescriptor, parametersMap);
+                templateLine = includeMatcher.replaceAll(includedFile);
             }
+            templateLines.set(i, templateLine);
         }
         return templateLines;
     }
@@ -83,11 +67,11 @@ public class TemplateProcessor {
                     String parameterName = startListElement.getElementName();
                     String newParameterName = startListElement.getElementParameter("listItemName");
                     if (parametersMap.containsKey(parameterName)) {
-                        Iterable list = (Iterable) parametersMap.get(parameterName);
+                        Iterable<Object> list = (Iterable) parametersMap.get(parameterName);
                         for (Object element : list) {
-                            Map<String, Object> iterMap = new HashMap<>();
-                            iterMap.put(newParameterName, element);
-                            linesToReturn.add(processWithElements(listBody, iterMap));
+                            Map<String, Object> currentIterationParametersMap = new HashMap<>();
+                            currentIterationParametersMap.put(newParameterName, element);
+                            linesToReturn.addAll(processLineWithElements(Arrays.asList(new String[]{listBody}), currentIterationParametersMap));
                         }
                     }
                 }
@@ -99,7 +83,7 @@ public class TemplateProcessor {
     }
 
     Element findStartListElement(String line) {
-        Matcher listStartMatcher = listStartPattern.matcher(line);
+        Matcher listStartMatcher = LIST_START_PATTERN.matcher(line);
         if (listStartMatcher.find()) {
             String parameterName = listStartMatcher.group(1);
             String listItemName = listStartMatcher.group(2);
@@ -111,10 +95,9 @@ public class TemplateProcessor {
     }
 
     Element findListElement(String line) {
-        Matcher listMatcher = listPattern.matcher(line);
+        Matcher listMatcher = LIST_PATTERN.matcher(line);
         if (listMatcher.find()) {
             String parameterName = listMatcher.group(1);
-            String listItemName = listMatcher.group(2);
             String body = listMatcher.group(3);
             Element listElement = new Element("list", parameterName);
             listElement.setElementParameter("listBody", body);
@@ -123,29 +106,24 @@ public class TemplateProcessor {
         return null;
     }
 
-    private String getIncludedFile(String instruction, Map<String, Object> parametersMap) {
-        String fileName;
-        Matcher matcher = includePattern.matcher(instruction);
-        if (matcher.find()) {
-            fileName = matcher.group(1);
+    private String processIncludedFileAndGet(String fileName, Map<String, Object> parametersMap) {
+        try {
             StringWriter writer = new StringWriter();
-            try {
-                process(fileName, parametersMap, writer);
-                return writer.toString();
-            } catch (FileNotFoundException e) {
-                e.printStackTrace();
-            }
+            process(fileName, parametersMap, writer);
+            return writer.toString();
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
         }
         return "";
     }
 
-    public String processWithElements(String templateString, Map<String, Object> parametersMap) {
-        Matcher matcher = tokenPattern.matcher(templateString);
+    String processLineWithElements(String templateString, Map<String, Object> parametersMap) {
+        Matcher matcher = TOKEN_PATTERN.matcher(templateString);
         while (matcher.find()) {
-            String tokenName = matcher.group(2);
-            Object tokenValue = getTokenValue(tokenName, parametersMap);
+            String valuePath = matcher.group(2);
+            Object tokenValue = getTokenValue(valuePath, parametersMap);
 
-            final Pattern compiledParticularTokenPattern = Pattern.compile(particularTokenPattern.replaceAll("<tokenName>", tokenName));
+            Pattern compiledParticularTokenPattern = Pattern.compile(NAMED_TOKEN_PATTERN.replaceAll("<tokenName>", valuePath));
             Matcher tokenMatcher = compiledParticularTokenPattern.matcher(templateString);
             if (tokenMatcher.find()) {
                 templateString = tokenMatcher.replaceAll(Matcher.quoteReplacement(tokenValue.toString()));
@@ -154,11 +132,19 @@ public class TemplateProcessor {
         return templateString;
     }
 
-    private Object getTokenValue(String tokenName, Map<String, Object> parametersMap) {
-        Matcher splitter = fieldPathSplitPattern.matcher(tokenName);
-        if (splitter.find()) {
-            String mapPath = splitter.group(1);
-            String objectPath = splitter.group(3);
+    public List<String> processLineWithElements(List<String> templateLines, Map<String, Object> parametersMap) {
+        for (int i = 0; i < templateLines.size(); i++) {
+            String templateString = templateLines.get(i);
+            templateLines.set(i, processLineWithElements(templateString, parametersMap));
+        }
+        return templateLines;
+    }
+
+    private Object getTokenValue(String valuePath, Map<String, Object> parametersMap) {
+        Matcher splitterRegexp = FIELD_PATH_SPLITTING_PATTERN.matcher(valuePath);
+        if (splitterRegexp.find()) {
+            String mapPath = splitterRegexp.group(1);
+            String objectPath = splitterRegexp.group(3);
             final Object objectFromParametersMap = Optional.ofNullable(parametersMap.get(mapPath)).orElse("null");
             if (objectPath != null) {
                 try {
@@ -177,25 +163,22 @@ public class TemplateProcessor {
     public void process(String templateFile, Map<String, Object> parametersMap, Writer writer) throws FileNotFoundException {
         try (InputStream resourceAsStream = getClass().getClassLoader().getResourceAsStream(baseDirectory + templateFile);
              InputStreamReader isReader = new InputStreamReader(resourceAsStream);
-                 BufferedReader reader = new BufferedReader(isReader)) {
-                List<String> resourceLines = reader.lines().collect(toList());
-                process(resourceLines, parametersMap, writer);
-            } catch (NullPointerException e) {
-                e.printStackTrace();
-                throw new FileNotFoundException("Template file " + templateFile + " not found");
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+             BufferedReader reader = new BufferedReader(isReader)) {
+            List<String> resourceLines = reader.lines().collect(toList());
+            process(resourceLines, parametersMap, writer);
+        } catch (NullPointerException e) {
+            e.printStackTrace();
+            throw new FileNotFoundException("Template file " + templateFile + " not found");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     public void process(List<String> linesList, Map<String, Object> parametersMap, Writer writer) throws
             IOException {
         List<String> linesWithInclude = processWithInclude(linesList, parametersMap);
         List<String> linesWithLists = processWithLists(linesWithInclude, parametersMap);
-        List<String> linesWithElements = linesWithLists
-                .stream()
-                .map(line -> processWithElements(line, parametersMap))
-                .collect(toList());
+        List<String> linesWithElements = processLineWithElements(linesWithLists, parametersMap);
         for (String line : linesWithElements) {
             writer.write(line);
         }
