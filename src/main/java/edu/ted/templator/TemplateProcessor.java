@@ -1,6 +1,7 @@
 package edu.ted.templator;
 
 import edu.ted.templator.exception.NoValueCanBeObtainedException;
+import edu.ted.templator.interfaces.StageProcessor;
 import edu.ted.templator.utils.ReflectionUtils;
 
 import java.io.*;
@@ -12,6 +13,13 @@ import static java.util.stream.Collectors.toList;
 
 
 public class TemplateProcessor {
+    private StageProcessor includeProcessor = this::processWithInclude;
+    private StageProcessor listProcessor = this::processWithLists;
+    private StageProcessor elementsProcessor = this::processLineWithElements;
+
+    private List<StageProcessor> stagesList = Arrays.asList(new StageProcessor[]{includeProcessor, listProcessor, elementsProcessor});
+
+
     private static final Pattern FIELD_PATH_SPLITTING_PATTERN = Pattern.compile("([^.]+)(\\.(.+))*");
 
     private static final Pattern TOKEN_PATTERN = Pattern.compile("(\\$\\{([^}?]+)(\\?*[^}]*)\\})");
@@ -25,7 +33,7 @@ public class TemplateProcessor {
     private final String baseDirectory;
 
     public TemplateProcessor(String baseDirectory) {
-            this.baseDirectory = baseDirectory;
+        this.baseDirectory = baseDirectory;
     }
 
     List<String> processWithInclude(List<String> templateLines, Map<String, Object> parametersMap) {
@@ -174,12 +182,12 @@ public class TemplateProcessor {
         }
     }
 
-    public void process(List<String> linesList, Map<String, Object> parametersMap, Writer writer) throws
-            IOException {
-        List<String> linesWithInclude = processWithInclude(linesList, parametersMap);
-        List<String> linesWithLists = processWithLists(linesWithInclude, parametersMap);
-        List<String> linesWithElements = processLineWithElements(linesWithLists, parametersMap);
-        for (String line : linesWithElements) {
+    public void process(List<String> linesList, Map<String, Object> parametersMap, Writer writer) throws IOException {
+        List<String> processedLines = linesList;
+        for (StageProcessor stageProcessor : stagesList) {
+            processedLines = stageProcessor.apply(processedLines, parametersMap);
+        }
+        for (String line : processedLines) {
             writer.write(line);
         }
         writer.flush();
